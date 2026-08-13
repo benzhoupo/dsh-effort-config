@@ -1,0 +1,5 @@
+# dsh-effort-config bundle patch — 安装到 profile 后自动生效。
+# 插入一行插件行：host 半为空实现（UI 与数据流全在浏览器半，经 dsh.client 声明发现）。
+- insert:
+    - id: effort-config
+      name: 'dsh-effort-config'

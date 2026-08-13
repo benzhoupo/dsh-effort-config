@@ -20,6 +20,7 @@ A DeepSeek Harness (dsh) plugin that lets you configure **reasoning-effort level
 - **Delete a provider** (together with all of its reasoning-level configuration), with two-step confirmation
 - **Persistent**: writes land in `settings.yaml` under `llm-pi-ai` and survive restarts
 - **Live sync**: the model picker refreshes right after saving (via the native `llm/adapters-updated` and `settings/document-updated` events)
+- **Bilingual UI**: copy follows the Harness interface language automatically (中文 / English)
 
 ## How it works
 

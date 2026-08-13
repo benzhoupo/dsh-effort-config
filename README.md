@@ -20,6 +20,7 @@ DeepSeek Harness（dsh）插件：在**设置页**为第三方模型配置「思
 - **删除提供商**（连同其全部思考档位配置），两段式确认
 - **持久化**：写入 `settings.yaml` 的 `llm-pi-ai` 命名空间，重启后仍在
 - **自动联动**：保存后模型选择框立即刷新（依赖原生 `llm/adapters-updated` 与 `settings/document-updated` 事件）
+- **双语界面**：文案自动跟随 Harness 界面语言（中文 / English）
 
 ## 工作原理
 

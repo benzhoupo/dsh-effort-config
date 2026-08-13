@@ -3,7 +3,7 @@
  *
  * 手写 ModuleLoader bundle（纯 JS，无构建工具链）。全部数据经现有 wire remote：
  *   connection.api.settings.describe / replace、connection.api.llm.providers / models、
- *   remote.$on 自动刷新。注册设置页「思考努力度」与右上角「添加提供商」。
+ *   remote.$on 自动刷新。UI 文案经 locale 服务双语（zh / en，自动跟随 Harness 界面语言）。
  */
 window.__ModuleLoader__.load({
   id: 'dsh-effort-config',
@@ -14,15 +14,200 @@ window.__ModuleLoader__.load({
     var react = require('react')
 
     var NS = 'llm-pi-ai'
+    var LOCALE_NS = 'effort-config'
     var LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
-    var LEVEL_HINTS = {
-      off: '不思考（不发送档位参数）',
-      minimal: '极少思考',
-      low: '少量思考',
-      medium: '中等思考',
-      high: '较强思考',
-      xhigh: '更强思考',
-      max: '最强思考',
+
+    // ---- 文案字典（zh / en）----
+
+    var zhDict = {
+      nav: '思考努力度',
+      'action.add': '添加提供商',
+      'action.cancel': '取消',
+      loading: '正在读取模型配置…',
+      intro: '为第三方模型声明思考档位：档位名固定为 off / minimal / low / medium / high / xhigh / max，值为该档位在 provider 端发送的 wire 拼写（默认建议档位名；off 留空表示不发送参数）。什么都没勾选 = 保持「未声明」（不写入档位）；只勾 off = 「无思考能力」。保存后即可在模型选择框的 Effort 面板中直接调节。',
+      retry: '重试',
+      empty: '尚未配置提供商。点击右上角「添加提供商」选择并启用一个提供商后，即可为其模型配置思考档位。',
+      'add.title': '选择提供商（已配置的在前；点击未配置的将其启用）',
+      'add.configured': '已配置',
+      'tag.hand': '手写路由',
+      'tag.catalog': '内置目录',
+      added: '已添加提供商「{name}」',
+      'name.withKey': '{name}（{key}）',
+      'list.sep': '、',
+      delete: '删除',
+      'delete.confirm': '确认删除',
+      'delete.cancel': '取消',
+      'delete.warn': '将移除该提供商及其全部思考档位配置',
+      'delete.warnHand': '（手写路由删除后需在配置文件中重新声明）',
+      deleted: '已删除提供商「{name}」及其全部思考档位配置。',
+      saved: '已保存：{items} 已更新。可在模型选择框的 Effort 面板中直接调节档位。',
+      'updated.levels': '档位',
+      'updated.default': '路由默认档位',
+      'updated.budgets': 'Anthropic token 预算',
+      protocol: '协议：',
+      'hint.wire': '提示：wire 默认建议档位名，可按网关要求改写',
+      'hint.anthropic': '提示：可配置自适应 effort 档位，或使用下方 token 预算（budget_tokens）',
+      'model.empty': '该路由暂无可用模型（模型列表来自内置目录；若刚启用请点「刷新」）。',
+      edit: '编辑档位',
+      collapse: '收起',
+      'default.label': '路由默认档位',
+      'default.none': '不设置（提供方默认）',
+      'default.hint': '先为模型声明档位后才能设置路由默认档位',
+      'budgets.label': 'Anthropic token 预算（thinkingBudgets）',
+      'budgets.keep': '保留现状',
+      'budgets.keepValue': '保留现状（{value}）',
+      'budgets.set': '设置预算',
+      'budgets.clear': '清除预算',
+      'budgets.none': '不修改',
+      save: '保存',
+      saving: '保存中…',
+      discard: '撤销修改',
+      refresh: '刷新',
+      readOnly: '当前 settings 只读，无法保存',
+      'chip.false': '无思考能力（false）',
+      'chip.none': '未声明档位',
+      'chip.off': 'off → (空)',
+      'level.off': '不思考（不发送档位参数）',
+      'level.minimal': '极少思考',
+      'level.low': '少量思考',
+      'level.medium': '中等思考',
+      'level.high': '较强思考',
+      'level.xhigh': '更强思考',
+      'level.max': '最强思考',
+      'wire.ph': 'wire 拼写',
+      'wire.phOff': '留空 = 不发送参数',
+      'editor.onlyOff': '仅剩 off：保存后将设为「无思考能力（reasoningEfforts: false）」。',
+      'editor.empty': '未选择任何档位：保存后将保持「未声明」（不写入档位）。',
+      'err.prefix': '模型 {model}：{msg}',
+      'err.off': 'off 档位请留空即可',
+      'err.wire': '档位 {level} 必须填写 wire 值（仅 off 可留空）',
+      'warn.clear': '模型 {model}：未选择任何档位，保存后将清除档位声明（未声明）',
+      'warn.onlyOff': '模型 {model}：仅剩 off，保存后将设为「无思考能力（false）」',
+      'err.efforts.type': '模型 {route}/{model} 的档位配置必须是对象或 false',
+      'err.unknownLevel': '模型 {route}/{model} 包含未知档位 "{level}"（允许：{levels}）',
+      'err.offValue': '模型 {route}/{model} 的 off 档位只能留空（null）或填写非空字符串',
+      'err.modelMissing': '路由 {route}：缺少模型 id',
+      'err.modelNotFound': '路由 {route} 的模型列表中找不到 "{model}"',
+      'err.base': '路由 {route} 的模型列表来自组合配置层（base）；请先在 settings.yaml 中为该路由声明 models 后再编辑档位',
+      'err.budgets.type': '预算必须是对象 {minimal, low, medium, high}',
+      'err.budgets.num': '预算 {key} 必须是大于等于 1 的数字',
+      'err.op': '未知操作类型 "{type}"',
+      'err.missingRoute': '缺少路由 route',
+      'err.noOps': '没有要保存的修改',
+      'err.loadFailed': '请求失败',
+      'err.providers': '用户配置缺少 providers 段',
+      'err.ns': 'llm-pi-ai 命名空间未注册（dsh-llm-pi-ai 未加载？）',
+      'err.notInDirectory': '提供商 "{route}" 不在可配置目录中',
+      'err.handWritten': '"{route}" 是手写路由（已在配置中声明），请直接在 settings.yaml 或「模型」设置页配置',
+      'err.alreadyConfigured': '提供商 "{route}" 已配置',
+      'err.notConfigured': '提供商 "{route}" 未配置',
+      'err.baseDelete': '提供商 "{route}" 的配置来自组合配置层（base），无法经界面删除；请直接修改配置文件',
+      'err.saveFailed': '保存失败',
+      'err.addFailed': '添加失败',
+      'err.removeFailed': '删除失败',
+      'err.conflict': '配置已被其他编辑修改，请重试',
+      'err.unknown': '未知档位 "{level}"（允许：{levels}）',
+    }
+
+    var enDict = {
+      nav: 'Reasoning Effort',
+      'action.add': 'Add Provider',
+      'action.cancel': 'Cancel',
+      loading: 'Loading model configuration…',
+      intro: 'Declare reasoning levels for third-party models: level names are fixed to off / minimal / low / medium / high / xhigh / max, and the value is the wire spelling sent to the provider (defaults to the level name; leave off empty to send no parameter). Nothing checked = stays undeclared (not written); only off checked = no reasoning. After saving, adjust levels directly in the Effort panel of the model picker.',
+      retry: 'Retry',
+      empty: 'No providers configured yet. Click "Add Provider" in the header to enable one, then configure reasoning levels for its models.',
+      'add.title': 'Choose a provider (configured ones first; click an unconfigured one to enable it)',
+      'add.configured': 'Configured',
+      'tag.hand': 'Hand-written',
+      'tag.catalog': 'Catalog',
+      added: 'Added provider "{name}"',
+      'name.withKey': '{name} ({key})',
+      'list.sep': ', ',
+      delete: 'Delete',
+      'delete.confirm': 'Confirm delete',
+      'delete.cancel': 'Cancel',
+      'delete.warn': 'This will remove the provider and all of its reasoning-level configuration',
+      'delete.warnHand': ' (hand-written routes must be re-declared in the config file afterwards)',
+      deleted: 'Deleted provider "{name}" and all of its reasoning-level configuration.',
+      saved: 'Saved: {items} updated. Adjust levels directly in the Effort panel of the model picker.',
+      'updated.levels': 'levels',
+      'updated.default': 'route default level',
+      'updated.budgets': 'Anthropic token budgets',
+      protocol: 'Protocol: ',
+      'hint.wire': 'Tip: wire defaults to the level name; rewrite it if the gateway requires a different spelling',
+      'hint.anthropic': 'Tip: configure adaptive-effort levels, or use the token budgets below (budget_tokens)',
+      'model.empty': 'No models available for this route yet (the model list comes from the built-in catalog; click "Refresh" if you just enabled it).',
+      edit: 'Edit levels',
+      collapse: 'Collapse',
+      'default.label': 'Route default level',
+      'default.none': 'Not set (provider default)',
+      'default.hint': 'Declare levels for a model first to set the route default level',
+      'budgets.label': 'Anthropic token budgets (thinkingBudgets)',
+      'budgets.keep': 'Keep current',
+      'budgets.keepValue': 'Keep current ({value})',
+      'budgets.set': 'Set budgets',
+      'budgets.clear': 'Clear budgets',
+      'budgets.none': 'No change',
+      save: 'Save',
+      saving: 'Saving…',
+      discard: 'Discard changes',
+      refresh: 'Refresh',
+      readOnly: 'Settings are read-only; saving is disabled',
+      'chip.false': 'No reasoning (false)',
+      'chip.none': 'Undeclared levels',
+      'chip.off': 'off → (empty)',
+      'level.off': 'No thinking (sends no level parameter)',
+      'level.minimal': 'Minimal thinking',
+      'level.low': 'Low thinking',
+      'level.medium': 'Medium thinking',
+      'level.high': 'High thinking',
+      'level.xhigh': 'Extra high thinking',
+      'level.max': 'Maximum thinking',
+      'wire.ph': 'wire spelling',
+      'wire.phOff': 'Empty = send no parameter',
+      'editor.onlyOff': 'Only off remains: after saving this becomes "no reasoning (reasoningEfforts: false)".',
+      'editor.empty': 'No levels selected: after saving this stays "undeclared" (nothing written).',
+      'err.prefix': 'Model {model}: {msg}',
+      'err.off': 'Leave the off level empty',
+      'err.wire': 'Level {level} needs a non-empty wire value (only off may be empty)',
+      'warn.clear': 'Model {model}: no levels selected — saving will clear its level declaration (undeclared)',
+      'warn.onlyOff': 'Model {model}: only off remains — saving will set "no reasoning (false)"',
+      'err.efforts.type': 'Model {route}/{model}: level configuration must be an object or false',
+      'err.unknownLevel': 'Model {route}/{model} contains unknown level "{level}" (allowed: {levels})',
+      'err.offValue': 'Model {route}/{model}: the off level can only be empty (null) or a non-empty string',
+      'err.modelMissing': 'Route {route}: missing model id',
+      'err.modelNotFound': 'Route {route} has no model "{model}" in its model list',
+      'err.base': 'Route {route}: its model list comes from the composition base layer; declare models in settings.yaml for this route before editing levels',
+      'err.budgets.type': 'Budgets must be an object {minimal, low, medium, high}',
+      'err.budgets.num': 'Budget {key} must be a number >= 1',
+      'err.op': 'Unknown operation type "{type}"',
+      'err.missingRoute': 'Missing route',
+      'err.noOps': 'No changes to save',
+      'err.loadFailed': 'Request failed',
+      'err.providers': 'User configuration is missing the providers section',
+      'err.ns': 'llm-pi-ai namespace is not registered (dsh-llm-pi-ai not loaded?)',
+      'err.notInDirectory': 'Provider "{route}" is not in the configurable directory',
+      'err.handWritten': '"{route}" is a hand-written route (already declared in config); configure it in settings.yaml or the Models settings page',
+      'err.alreadyConfigured': 'Provider "{route}" is already configured',
+      'err.notConfigured': 'Provider "{route}" is not configured',
+      'err.baseDelete': 'Provider "{route}" is configured in the composition base layer and cannot be removed from the UI; edit the config file directly',
+      'err.saveFailed': 'Save failed',
+      'err.addFailed': 'Add failed',
+      'err.removeFailed': 'Delete failed',
+      'err.conflict': 'Configuration was changed by another edit; please retry',
+      'err.unknown': 'Unknown level "{level}" (allowed: {levels})',
+    }
+
+    // 顶层 t：apply 里若 locale 服务可用则替换为 locale.bind 的结果（自动跟随界面语言），
+    // 否则回退到中文字典。
+    var t = function (key, params) {
+      var template = zhDict[key]
+      if (template === undefined) return key
+      if (!params) return template
+      return template.replace(/\{(\w+)\}/g, function (match, name) {
+        return name in params ? String(params[name]) : match
+      })
     }
 
     function defaultWire(level) {
@@ -45,20 +230,20 @@ window.__ModuleLoader__.load({
 
     function effortChips(efforts) {
       if (efforts === false) {
-        return react.createElement('span', { className: 'dsh-ee-chip dsh-ee-chipFalse' }, '无思考能力（false）')
+        return react.createElement('span', { className: 'dsh-ee-chip dsh-ee-chipFalse' }, t('chip.false'))
       }
       if (efforts === null || efforts === undefined) {
-        return react.createElement('span', { className: 'dsh-ee-chip dsh-ee-chipNone' }, '未声明档位')
+        return react.createElement('span', { className: 'dsh-ee-chip dsh-ee-chipNone' }, t('chip.none'))
       }
       var parts = []
       for (var i = 0; i < LEVELS.length; i++) {
         var level = LEVELS[i]
         if (efforts[level] === undefined) continue
-        var label = level === 'off' ? 'off → (空)' : level + ' → ' + String(efforts[level])
+        var label = level === 'off' ? t('chip.off') : level + ' → ' + String(efforts[level])
         parts.push(react.createElement('span', { className: 'dsh-ee-chip', key: level }, label))
       }
       return parts.length === 0
-        ? react.createElement('span', { className: 'dsh-ee-chip dsh-ee-chipNone' }, '未声明档位')
+        ? react.createElement('span', { className: 'dsh-ee-chip dsh-ee-chipNone' }, t('chip.none'))
         : parts
     }
 
@@ -78,9 +263,9 @@ window.__ModuleLoader__.load({
         var level = LEVELS[i]
         if (draft[level] === undefined) continue
         if (level === 'off') {
-          if (typeof draft[level] === 'string' && draft[level].length === 0) errors.push('off 档位请留空即可')
+          if (typeof draft[level] === 'string' && draft[level].length === 0) errors.push(t('err.off'))
         } else if (typeof draft[level] !== 'string' || draft[level].length === 0) {
-          errors.push('档位 ' + level + ' 必须填写 wire 值（仅 off 可留空）')
+          errors.push(t('err.wire', { level: level }))
         }
       }
       return errors
@@ -90,21 +275,21 @@ window.__ModuleLoader__.load({
     function validateEfforts(route, model, efforts) {
       if (efforts === false) return false
       if (efforts === null || typeof efforts !== 'object' || Array.isArray(efforts)) {
-        throw new Error('模型 ' + route + '/' + model + ' 的档位配置必须是对象或 false')
+        throw new Error(t('err.efforts.type', { route: route, model: model }))
       }
       var keys = Object.keys(efforts)
       for (var i = 0; i < keys.length; i++) {
         var level = keys[i]
         if (LEVELS.indexOf(level) === -1) {
-          throw new Error('模型 ' + route + '/' + model + ' 包含未知档位 "' + level + '"（允许：' + LEVELS.join('/') + '）')
+          throw new Error(t('err.unknownLevel', { route: route, model: model, level: level, levels: LEVELS.join('/') }))
         }
         var wire = efforts[level]
         if (level === 'off') {
           if (!(wire === null || wire === undefined || (typeof wire === 'string' && wire.length > 0))) {
-            throw new Error('模型 ' + route + '/' + model + ' 的 off 档位只能留空（null）或填写非空字符串')
+            throw new Error(t('err.offValue', { route: route, model: model }))
           }
         } else if (typeof wire !== 'string' || wire.length === 0) {
-          throw new Error('模型 ' + route + '/' + model + ' 的 "' + level + '" 档位必须填写非空 wire 值（仅 off 可留空）')
+          throw new Error(t('err.wire', { level: level }))
         }
       }
       var hasThinking = false
@@ -118,14 +303,14 @@ window.__ModuleLoader__.load({
     function validateBudgets(budgets) {
       if (budgets === null || budgets === undefined) return null
       if (typeof budgets !== 'object' || Array.isArray(budgets)) {
-        throw new Error('预算必须是对象 {minimal, low, medium, high}')
+        throw new Error(t('err.budgets.type'))
       }
       var keys = ['minimal', 'low', 'medium', 'high']
       for (var i = 0; i < 4; i++) {
         var key = keys[i]
         var value = budgets[key]
         if (typeof value !== 'number' || !Number.isFinite(value) || value < 1) {
-          throw new Error('预算 ' + key + ' 必须是大于等于 1 的数字')
+          throw new Error(t('err.budgets.num', { key: key }))
         }
       }
       return budgets
@@ -135,10 +320,10 @@ window.__ModuleLoader__.load({
     function applyOp(user, resolved, op) {
       var providers = user.providers
       if (providers === undefined || providers === null || typeof providers !== 'object' || Array.isArray(providers)) {
-        throw new Error('用户配置缺少 providers 段')
+        throw new Error(t('err.providers'))
       }
       var route = op.route
-      if (typeof route !== 'string' || route.length === 0) throw new Error('缺少路由 route')
+      if (typeof route !== 'string' || route.length === 0) throw new Error(t('err.missingRoute'))
       var rp = providers[route]
       if (rp === undefined || rp === null || typeof rp !== 'object' || Array.isArray(rp)) {
         rp = {}
@@ -146,11 +331,11 @@ window.__ModuleLoader__.load({
       }
       if (op.type === 'set-efforts') {
         var model = op.model
-        if (typeof model !== 'string' || model.length === 0) throw new Error('路由 ' + route + '：缺少模型 id')
+        if (typeof model !== 'string' || model.length === 0) throw new Error(t('err.modelMissing', { route: route }))
         var efforts = validateEfforts(route, model, op.efforts)
         if (Array.isArray(rp.models) && rp.models.length > 0) {
           var index = rp.models.findIndex(function (m) { return m.id === model })
-          if (index === -1) throw new Error('路由 ' + route + ' 的模型列表中找不到 "' + model + '"')
+          if (index === -1) throw new Error(t('err.modelNotFound', { route: route, model: model }))
           if (efforts === 'unset') {
             delete rp.models[index].reasoningEfforts
           } else {
@@ -160,7 +345,7 @@ window.__ModuleLoader__.load({
           var resolvedRoute = resolved && resolved.providers && resolved.providers[route] && typeof resolved.providers[route] === 'object'
             ? resolved.providers[route] : null
           if (resolvedRoute !== null && Array.isArray(resolvedRoute.models) && resolvedRoute.models.length > 0) {
-            throw new Error('路由 ' + route + ' 的模型列表来自组合配置层（base）；请先在 settings.yaml 中为该路由声明 models 后再编辑档位')
+            throw new Error(t('err.base', { route: route }))
           }
           var overrides = rp.modelOverrides
           if (overrides === undefined || overrides === null || typeof overrides !== 'object' || Array.isArray(overrides)) {
@@ -186,7 +371,7 @@ window.__ModuleLoader__.load({
           delete rp.reasoning
         } else {
           if (LEVELS.indexOf(op.level) === -1) {
-            throw new Error('未知档位 "' + op.level + '"（允许：' + LEVELS.join('/') + '）')
+            throw new Error(t('err.unknown', { level: op.level, levels: LEVELS.join('/') }))
           }
           rp.reasoning = op.level
         }
@@ -200,13 +385,13 @@ window.__ModuleLoader__.load({
         }
         return
       }
-      throw new Error('未知操作类型 "' + op.type + '"')
+      throw new Error(t('err.op', { type: op.type }))
     }
 
     // ---- wire 辅助 ----
 
     function apiError(result) {
-      return (result && result.result && result.result.error && result.result.error.message) || '请求失败'
+      return (result && result.result && result.result.error && result.result.error.message) || t('err.loadFailed')
     }
 
     function describeView(api) {
@@ -217,7 +402,7 @@ window.__ModuleLoader__.load({
         for (var i = 0; i < value.namespaces.length; i++) {
           if (value.namespaces[i].ns === NS) { view = value.namespaces[i]; break }
         }
-        if (view === null) throw new Error('llm-pi-ai 命名空间未注册（dsh-llm-pi-ai 未加载？）')
+        if (view === null) throw new Error(t('err.ns'))
         return { view: view, writable: value.writable }
       })
     }
@@ -357,16 +542,16 @@ window.__ModuleLoader__.load({
     // 启用目录提供商：user.providers[route] = {}。
     function addRoute(api, route) {
       return routeInDirectory(api, route).then(function (entry) {
-        if (entry === null) return { ok: false, error: '提供商 "' + route + '" 不在可配置目录中' }
+        if (entry === null) return { ok: false, error: t('err.notInDirectory', { route: route }) }
         if (entry.declared === true) {
-          return { ok: false, error: '"' + route + '" 是手写路由（已在配置中声明），请直接在 settings.yaml 或「模型」设置页配置' }
+          return { ok: false, error: t('err.handWritten', { route: route }) }
         }
         return describeView(api).then(function (wrapped) {
           var view = wrapped.view
           var value = view.value !== undefined && view.value !== null && typeof view.value === 'object' ? view.value : {}
           var resolvedProviders = value.providers !== undefined && value.providers !== null && typeof value.providers === 'object' ? value.providers : {}
           if (resolvedProviders[route] !== undefined && resolvedProviders[route] !== null) {
-            return { ok: false, error: '提供商 "' + route + '" 已配置' }
+            return { ok: false, error: t('err.alreadyConfigured', { route: route }) }
           }
           var user = view.user !== undefined && view.user !== null ? JSON.parse(JSON.stringify(view.user)) : {}
           if (user.providers === undefined || user.providers === null || typeof user.providers !== 'object' || Array.isArray(user.providers)) {
@@ -384,20 +569,20 @@ window.__ModuleLoader__.load({
     // 删除提供商：从用户层移除整个 profile（含档位、默认档位、预算）。
     function removeRoute(api, route) {
       return routeInDirectory(api, route).then(function (entry) {
-        if (entry === null) return { ok: false, error: '提供商 "' + route + '" 不在可配置目录中' }
+        if (entry === null) return { ok: false, error: t('err.notInDirectory', { route: route }) }
         return describeView(api).then(function (wrapped) {
           var view = wrapped.view
           var value = view.value !== undefined && view.value !== null && typeof view.value === 'object' ? view.value : {}
           var resolvedProviders = value.providers !== undefined && value.providers !== null && typeof value.providers === 'object' ? value.providers : {}
           if (resolvedProviders[route] === undefined || resolvedProviders[route] === null) {
-            return { ok: false, error: '提供商 "' + route + '" 未配置' }
+            return { ok: false, error: t('err.notConfigured', { route: route }) }
           }
           var user = view.user !== undefined && view.user !== null ? JSON.parse(JSON.stringify(view.user)) : {}
           if (user.providers === undefined || user.providers === null || typeof user.providers !== 'object' || Array.isArray(user.providers)) {
             user.providers = {}
           }
           if (user.providers[route] === undefined || user.providers[route] === null) {
-            return { ok: false, error: '提供商 "' + route + '" 的配置来自组合配置层（base），无法经界面删除；请直接修改配置文件' }
+            return { ok: false, error: t('err.baseDelete', { route: route }) }
           }
           delete user.providers[route]
           return api.settings.replace({ ns: NS, section: user, expectedRevision: view.revision }).then(function (res) {
@@ -414,6 +599,7 @@ window.__ModuleLoader__.load({
       var api = props.api
       var remote = props.remote
       var ctx = props.ctx
+      var locale = props.locale
       var addingNow = props.addingNow
       var setAddingNow = props.setOnAdding
       var useState = react.useState
@@ -427,6 +613,17 @@ window.__ModuleLoader__.load({
       var token0 = useState(0)
       var reloadToken = token0[0]
       var setReloadToken = token0[1]
+      var localeTick0 = useState(0)
+      var setLocaleTick = localeTick0[1]
+
+      // 语言切换时重渲染（locale 服务订阅）。
+      useEffect(function () {
+        if (locale === undefined || typeof locale.subscribe !== 'function') return
+        var unsub = locale.subscribe(function () { setLocaleTick(function (v) { return v + 1 }) })
+        return function () {
+          if (typeof unsub === 'function') { try { unsub() } catch (e) { /* noop */ } }
+        }
+      }, [])
 
       useEffect(function () {
         var alive = true
@@ -441,7 +638,7 @@ window.__ModuleLoader__.load({
       }, [reloadToken])
 
       useEffect(function () {
-        var refresh = function () { setReloadToken(function (t) { return t + 1 }) }
+        var refresh = function () { setReloadToken(function (v) { return v + 1 }) }
         var disposers = []
         if (remote !== undefined) {
           var d1 = remote.$on('settings/document-updated', refresh)
@@ -457,10 +654,10 @@ window.__ModuleLoader__.load({
         }
       }, [])
 
-      var reload = function () { setReloadToken(function (t) { return t + 1 }) }
+      var reload = function () { setReloadToken(function (v) { return v + 1 }) }
 
       if (state.status === 'loading') {
-        return react.createElement('div', { className: 'dsh-ee-section' }, '正在读取模型配置…')
+        return react.createElement('div', { className: 'dsh-ee-section' }, t('loading'))
       }
 
       var configured = []
@@ -474,15 +671,14 @@ window.__ModuleLoader__.load({
       })
 
       return react.createElement('div', { className: 'dsh-ee-section' },
-        react.createElement('h2', { className: 'dsh-ee-title' }, '思考努力度'),
-        react.createElement('p', { className: 'dsh-ee-intro' },
-          '为第三方模型声明思考档位：档位名固定为 off / minimal / low / medium / high / xhigh / max，值为该档位在 provider 端发送的 wire 拼写（默认建议档位名；off 留空表示不发送参数）。什么都没勾选 = 保持「未声明」（不写入档位）；只勾 off = 「无思考能力」。保存后即可在模型选择框的 Effort 面板中直接调节。'),
+        react.createElement('h2', { className: 'dsh-ee-title' }, t('nav')),
+        react.createElement('p', { className: 'dsh-ee-intro' }, t('intro')),
         state.error !== null && react.createElement('div', { className: 'dsh-ee-banner dsh-ee-bannerError' },
           react.createElement('span', null, state.error),
-          react.createElement('button', { className: 'dsh-ee-linkButton', onClick: reload }, '重试')),
+          react.createElement('button', { className: 'dsh-ee-linkButton', onClick: reload }, t('retry'))),
         notice !== null && react.createElement('div', { className: 'dsh-ee-banner dsh-ee-bannerOk' }, notice),
         addingNow && react.createElement('div', { className: 'dsh-ee-addArea' },
-          react.createElement('span', { className: 'dsh-ee-fieldLabel' }, '选择提供商（已配置的在前；点击未配置的将其启用）'),
+          react.createElement('span', { className: 'dsh-ee-fieldLabel' }, t('add.title')),
           candidates.map(function (p) {
             return react.createElement('button', {
               key: p.provider,
@@ -492,10 +688,10 @@ window.__ModuleLoader__.load({
                 addRoute(api, p.provider).then(function (res) {
                   if (res && res.ok) {
                     setAddingNow(false)
-                    setNotice('已添加提供商「' + p.displayName + '（' + p.provider + '）」')
+                    setNotice(t('added', { name: t('name.withKey', { name: p.displayName, key: p.provider }) }))
                     reload()
                   } else {
-                    setState(function (s) { return Object.assign({}, s, { error: (res && res.error) || '添加失败' }) })
+                    setState(function (s) { return Object.assign({}, s, { error: (res && res.error) || t('err.addFailed') }) })
                   }
                 }).catch(function (err) {
                   setState(function (s) { return Object.assign({}, s, { error: String((err && err.message) || err) }) })
@@ -504,11 +700,11 @@ window.__ModuleLoader__.load({
             },
               react.createElement('span', { className: 'dsh-ee-addName' }, p.displayName),
               react.createElement('code', { className: 'dsh-ee-routeKey' }, p.provider),
-              react.createElement('span', { className: 'dsh-ee-tag' }, p.declared ? '手写路由' : '内置目录'),
-              p.configured && react.createElement('span', { className: 'dsh-ee-tag dsh-ee-tagOk' }, '已配置'))
+              react.createElement('span', { className: 'dsh-ee-tag' }, p.declared ? t('tag.hand') : t('tag.catalog')),
+              p.configured && react.createElement('span', { className: 'dsh-ee-tag dsh-ee-tagOk' }, t('add.configured')))
           })),
         configured.length === 0 && !addingNow && !state.error
-          ? react.createElement('p', { className: 'dsh-ee-empty' }, '尚未配置提供商。点击右上角「添加提供商」选择并启用一个提供商后，即可为其模型配置思考档位。')
+          ? react.createElement('p', { className: 'dsh-ee-empty' }, t('empty'))
           : configured.map(function (p) {
             return react.createElement(RouteCard, {
               key: p.provider,
@@ -520,8 +716,8 @@ window.__ModuleLoader__.load({
             })
           }),
         react.createElement('div', { className: 'dsh-ee-footer' },
-          react.createElement('button', { className: 'dsh-ee-secondaryButton', onClick: reload }, '刷新'),
-          state.writable === false && react.createElement('span', { className: 'dsh-ee-hint' }, '当前 settings 只读，无法保存'))
+          react.createElement('button', { className: 'dsh-ee-secondaryButton', onClick: reload }, t('refresh')),
+          state.writable === false && react.createElement('span', { className: 'dsh-ee-hint' }, t('readOnly')))
       )
     }
 
@@ -533,7 +729,7 @@ window.__ModuleLoader__.load({
         var model = models[i]
         var d = drafts[model]
         var errs = draftErrors(d)
-        for (var e = 0; e < errs.length; e++) errors.push('模型 ' + model + '：' + errs[e])
+        for (var e = 0; e < errs.length; e++) errors.push(t('err.prefix', { model: model, msg: errs[e] }))
         if (d === false) continue
         var hasAny = Object.keys(d).length > 0
         var hasThinking = false
@@ -547,10 +743,10 @@ window.__ModuleLoader__.load({
           }
           if (!hasAny) {
             if (current !== null && current !== undefined && current !== false) {
-              warnings.push('模型 ' + model + '：未选择任何档位，保存后将清除档位声明（未声明）')
+              warnings.push(t('warn.clear', { model: model }))
             }
           } else {
-            warnings.push('模型 ' + model + '：仅剩 off，保存后将设为「无思考能力（false）」')
+            warnings.push(t('warn.onlyOff', { model: model }))
           }
         }
       }
@@ -635,12 +831,12 @@ window.__ModuleLoader__.load({
         saveOps(api, ops, props.revision).then(function (res) {
           if (res && res.ok) {
             var updated = []
-            if (ops.some(function (o) { return o.type === 'set-efforts' })) updated.push('档位')
-            if (ops.some(function (o) { return o.type === 'set-route-default' })) updated.push('路由默认档位')
-            if (ops.some(function (o) { return o.type === 'set-budgets' })) updated.push('Anthropic token 预算')
-            props.onSaved('已保存：' + updated.join('、') + ' 已更新。可在模型选择框的 Effort 面板中直接调节档位。')
+            if (ops.some(function (o) { return o.type === 'set-efforts' })) updated.push(t('updated.levels'))
+            if (ops.some(function (o) { return o.type === 'set-route-default' })) updated.push(t('updated.default'))
+            if (ops.some(function (o) { return o.type === 'set-budgets' })) updated.push(t('updated.budgets'))
+            props.onSaved(t('saved', { items: updated.join(t('list.sep')) }))
           } else {
-            setCardError((res && res.error) || '保存失败')
+            setCardError((res && res.error) || t('err.saveFailed'))
           }
         }).catch(function (err) {
           setCardError(String((err && err.message) || err))
@@ -654,9 +850,9 @@ window.__ModuleLoader__.load({
         setCardError(null)
         removeRoute(api, p.provider).then(function (res) {
           if (res && res.ok) {
-            props.onSaved('已删除提供商「' + p.displayName + '（' + p.provider + '）」及其全部思考档位配置。')
+            props.onSaved(t('deleted', { name: t('name.withKey', { name: p.displayName, key: p.provider }) }))
           } else {
-            setCardError((res && res.error) || '删除失败')
+            setCardError((res && res.error) || t('err.removeFailed'))
             setConfirmDelete(false)
           }
         }).catch(function (err) {
@@ -683,19 +879,19 @@ window.__ModuleLoader__.load({
           react.createElement('div', { className: 'dsh-ee-routeIdentity' },
             react.createElement('span', { className: 'dsh-ee-routeName' }, p.displayName),
             react.createElement('code', { className: 'dsh-ee-routeKey' }, p.provider),
-            react.createElement('span', { className: 'dsh-ee-tag' }, p.declared ? '手写路由' : '内置目录'),
+            react.createElement('span', { className: 'dsh-ee-tag' }, p.declared ? t('tag.hand') : t('tag.catalog')),
             react.createElement('div', { className: 'dsh-ee-routeActions' },
               confirmDelete
                 ? react.createElement(react.Fragment, null,
-                    react.createElement('span', { className: 'dsh-ee-warn' }, '将移除该提供商及其全部思考档位配置' + (p.declared ? '（手写路由删除后需在配置文件中重新声明）' : '')),
-                    react.createElement('button', { className: 'dsh-ee-dangerButton', disabled: busy, onClick: remove }, '确认删除'),
-                    react.createElement('button', { className: 'dsh-ee-linkButton', disabled: busy, onClick: function () { setConfirmDelete(false) } }, '取消'))
-                : react.createElement('button', { className: 'dsh-ee-dangerButton', onClick: function () { setConfirmDelete(true) } }, '删除'))),
+                    react.createElement('span', { className: 'dsh-ee-warn' }, t('delete.warn') + (p.declared ? t('delete.warnHand') : '')),
+                    react.createElement('button', { className: 'dsh-ee-dangerButton', disabled: busy, onClick: remove }, t('delete.confirm')),
+                    react.createElement('button', { className: 'dsh-ee-linkButton', disabled: busy, onClick: function () { setConfirmDelete(false) } }, t('delete.cancel')))
+                : react.createElement('button', { className: 'dsh-ee-dangerButton', onClick: function () { setConfirmDelete(true) } }, t('delete')))),
           react.createElement('div', { className: 'dsh-ee-routeMeta' },
-            p.api !== null && react.createElement('span', { className: 'dsh-ee-hint' }, '协议：' + p.api),
-            react.createElement('span', { className: 'dsh-ee-hint' }, isAnthropic ? '提示：可配置自适应 effort 档位，或使用下方 token 预算（budget_tokens）' : '提示：wire 默认建议档位名，可按网关要求改写'))),
+            p.api !== null && react.createElement('span', { className: 'dsh-ee-hint' }, t('protocol') + p.api),
+            react.createElement('span', { className: 'dsh-ee-hint' }, isAnthropic ? t('hint.anthropic') : t('hint.wire')))),
         p.models.length === 0
-          ? react.createElement('p', { className: 'dsh-ee-empty' }, '该路由暂无可用模型（模型列表来自内置目录；若刚启用请点「刷新」）。')
+          ? react.createElement('p', { className: 'dsh-ee-empty' }, t('model.empty'))
           : p.models.map(function (m) {
             return react.createElement('div', { className: 'dsh-ee-modelRow', key: m.id },
               react.createElement('div', { className: 'dsh-ee-modelLine' },
@@ -712,7 +908,7 @@ window.__ModuleLoader__.load({
                     })
                     setDrafts(function (d) { return d[m.id] !== undefined ? d : Object.assign({}, d, (function (x) { x[m.id] = effortsToDict(m.efforts); return x })({})) })
                   },
-                }, openModels[m.id] ? '收起' : '编辑档位')),
+                }, openModels[m.id] ? t('collapse') : t('edit'))),
               openModels[m.id] && react.createElement(ModelEditor, {
                 draft: drafts[m.id],
                 onChange: function (next) { setDrafts(function (d) { return Object.assign({}, d, (function (x) { x[m.id] = next; return x })({})) }) },
@@ -720,18 +916,18 @@ window.__ModuleLoader__.load({
           }),
         react.createElement('div', { className: 'dsh-ee-routeSettings' },
           react.createElement('label', { className: 'dsh-ee-field' },
-            react.createElement('span', { className: 'dsh-ee-fieldLabel' }, '路由默认档位'),
+            react.createElement('span', { className: 'dsh-ee-fieldLabel' }, t('default.label')),
             react.createElement('select', {
               className: 'dsh-ee-input dsh-ee-select',
               value: defaultDraft !== undefined ? (defaultDraft === null ? '__none__' : defaultDraft) : (p.reasoning || '__none__'),
               disabled: unionLevels.length === 0 && defaultDraft === undefined && p.reasoning === null,
               onChange: function (e) { setDefaultDraft(e.target.value === '__none__' ? null : e.target.value) },
             },
-              react.createElement('option', { value: '__none__' }, '不设置（提供方默认）'),
+              react.createElement('option', { value: '__none__' }, t('default.none')),
               unionLevels.map(function (l) { return react.createElement('option', { value: l, key: l }, l) })),
-            unionLevels.length === 0 && react.createElement('span', { className: 'dsh-ee-hint' }, '先为模型声明档位后才能设置路由默认档位')),
+            unionLevels.length === 0 && react.createElement('span', { className: 'dsh-ee-hint' }, t('default.hint'))),
           isAnthropic && react.createElement('div', { className: 'dsh-ee-field' },
-            react.createElement('span', { className: 'dsh-ee-fieldLabel' }, 'Anthropic token 预算（thinkingBudgets）'),
+            react.createElement('span', { className: 'dsh-ee-fieldLabel' }, t('budgets.label')),
             react.createElement('select', {
               className: 'dsh-ee-input dsh-ee-select',
               value: budgetMode,
@@ -748,9 +944,9 @@ window.__ModuleLoader__.load({
                 }
               },
             },
-              react.createElement('option', { value: 'keep' }, budgetSummary !== null ? '保留现状（' + budgetSummary + '）' : '不修改'),
-              react.createElement('option', { value: 'set' }, '设置预算'),
-              react.createElement('option', { value: 'clear' }, '清除预算')),
+              react.createElement('option', { value: 'keep' }, budgetSummary !== null ? t('budgets.keepValue', { value: budgetSummary }) : t('budgets.none')),
+              react.createElement('option', { value: 'set' }, t('budgets.set')),
+              react.createElement('option', { value: 'clear' }, t('budgets.clear'))),
             budgetMode === 'set' && react.createElement('div', { className: 'dsh-ee-budgetRow' },
               ['minimal', 'low', 'medium', 'high'].map(function (k) {
                 return react.createElement('label', { className: 'dsh-ee-budgetField', key: k },
@@ -771,7 +967,7 @@ window.__ModuleLoader__.load({
           cardError !== null && react.createElement('p', null, cardError)),
         react.createElement('div', { className: 'dsh-ee-actions' },
           react.createElement('button', { className: 'dsh-ee-primaryButton', disabled: !canSave, onClick: save },
-            busy ? '保存中…' : '保存'),
+            busy ? t('saving') : t('save')),
           react.createElement('button', {
             className: 'dsh-ee-secondaryButton',
             disabled: busy,
@@ -782,7 +978,7 @@ window.__ModuleLoader__.load({
               setBudgetMode('keep')
               setCardError(null)
             },
-          }, '撤销修改'))
+          }, t('discard')))
       )
     }
 
@@ -810,11 +1006,11 @@ window.__ModuleLoader__.load({
               },
             }),
             react.createElement('span', { className: 'dsh-ee-levelName' }, level),
-            react.createElement('span', { className: 'dsh-ee-levelHint' }, LEVEL_HINTS[level]),
+            react.createElement('span', { className: 'dsh-ee-levelHint' }, t('level.' + level)),
             react.createElement('input', {
               className: 'dsh-ee-input dsh-ee-wireInput' + (invalid ? ' dsh-ee-inputInvalid' : ''),
               type: 'text',
-              placeholder: level === 'off' ? '留空 = 不发送参数' : 'wire 拼写',
+              placeholder: level === 'off' ? t('wire.phOff') : t('wire.ph'),
               value: wireText(draft[level]),
               disabled: !checked,
               onChange: function (e) {
@@ -825,7 +1021,7 @@ window.__ModuleLoader__.load({
             }))
         }),
         !hasThinking && react.createElement('p', { className: 'dsh-ee-hint' },
-          hasAny ? '仅剩 off：保存后将设为「无思考能力（reasoningEfforts: false）」。' : '未选择任何档位：保存后将保持「未声明」（不写入档位）。'),
+          hasAny ? t('editor.onlyOff') : t('editor.empty')),
         errors.length > 0 && react.createElement('div', { className: 'dsh-ee-error' },
           errors.map(function (msg, i) { return react.createElement('p', { key: i }, msg) }))
       )
@@ -833,7 +1029,7 @@ window.__ModuleLoader__.load({
 
     // ---- 插件主体 ----
 
-    var inject = ['slots', 'connection', 'remote']
+    var inject = ['slots', 'connection', 'remote', 'locale']
 
     var CSS = '.dsh-ee-section{max-width:720px;color:var(--dsw-alias-label-primary);flex-direction:column;gap:12px;display:flex}' +
       '.dsh-ee-title{color:var(--dsw-alias-label-primary);margin:0;font-size:16px;font-weight:500;line-height:24px}' +
@@ -909,6 +1105,21 @@ window.__ModuleLoader__.load({
       if (connection === undefined || connection.api === undefined) return
       var api = connection.api
       var remote = ctx.get('remote')
+      var locale = ctx.get('locale')
+
+      // 注册双语字典并绑定 t（自动跟随 Harness 界面语言；切换语言时组件经订阅重渲染）。
+      if (locale !== undefined && typeof locale.register === 'function') {
+        ctx.effect(function () {
+          var disposer
+          try {
+            disposer = locale.register(LOCALE_NS, { zh: zhDict, en: enDict })
+          } catch (e) { /* 字典已注册等异常：忽略，继续用 bind */ }
+          return function () {
+            if (typeof disposer === 'function') { try { disposer() } catch (e) { /* noop */ } }
+          }
+        }, 'dsh-effort-config: locale dicts')
+        t = locale.bind(LOCALE_NS)
+      }
 
       // 注入样式（页面级一次性）。
       var styleEl = document.createElement('style')
@@ -951,7 +1162,7 @@ window.__ModuleLoader__.load({
         return react.createElement('button', {
           className: 'dsh-ee-actionButton' + (addingNow ? ' dsh-ee-actionButtonActive' : ''),
           onClick: function () { setAddingNow(!addingNow) },
-        }, addingNow ? '取消' : '添加提供商')
+        }, addingNow ? t('action.cancel') : t('action.add'))
       }
 
       var Section = function (props) {
@@ -960,6 +1171,7 @@ window.__ModuleLoader__.load({
           api: api,
           remote: remote,
           ctx: ctx,
+          locale: locale,
           close: props.close,
           addingNow: pair[0],
           setOnAdding: pair[1],
@@ -968,13 +1180,13 @@ window.__ModuleLoader__.load({
 
       slots.inject('settings.section', function () {
         return slots.register(
-          { name: 'settings.section', id: 'thinking-effort', order: 11, label: '思考努力度' },
+          { name: 'settings.section', id: 'thinking-effort', order: 11, label: function () { return t('nav') } },
           Section
         )
       })
       slots.inject('settings.action', function () {
         return slots.register(
-          { name: 'settings.action', id: 'thinking-effort-add', order: 5, label: '添加提供商' },
+          { name: 'settings.action', id: 'thinking-effort-add', order: 5, label: function () { return t('action.add') } },
           AddProviderAction
         )
       })

@@ -2,6 +2,8 @@
 
 A DeepSeek Harness (dsh) plugin that lets you configure **reasoning-effort levels** for third-party models from the **settings page**, writing to the `llm-pi-ai` settings namespace. **Level selection reuses the native model picker's Effort panel** (composer model seat / `/model` command) — the selector is not reimplemented; it appears automatically once a model declares levels.
 
+## Demo Screenshots
+
 ![Main page](https://picui.ogmua.cn/s1/2026/08/14/6a7e033c029c9.webp)
 
 ![Add provider](https://picui.ogmua.cn/s1/2026/08/14/6a7e033c2d579.webp)

@@ -2,6 +2,8 @@
 
 DeepSeek Harness（dsh）插件：在**设置页**为第三方模型配置「思考努力度」档位，写入 `llm-pi-ai` 命名空间；**档位调节复用原生模型框的 Effort 面板**（composer 模型座 / `/model` 命令），选择器无需重做——模型声明档位后自动出现。
 
+## 演示截图
+
 ![主界面.png](https://picui.ogmua.cn/s1/2026/08/14/6a7e033c029c9.webp)
 
 ![添加界面.png](https://picui.ogmua.cn/s1/2026/08/14/6a7e033c2d579.webp)

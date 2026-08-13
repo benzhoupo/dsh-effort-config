@@ -4,9 +4,9 @@ A DeepSeek Harness (dsh) plugin that lets you configure **reasoning-effort level
 
 ## Demo Screenshots
 
-![Main page](https://picui.ogmua.cn/s1/2026/08/14/6a7e033c029c9.webp)
+![Main page (English UI)](https://picui.ogmua.cn/s1/2026/08/14/6a7e06c1e170e.webp)
 
-![Add provider](https://picui.ogmua.cn/s1/2026/08/14/6a7e033c2d579.webp)
+![Add provider (English UI)](https://picui.ogmua.cn/s1/2026/08/14/6a7e06c1edb03.webp)
 
 ## Features
 
